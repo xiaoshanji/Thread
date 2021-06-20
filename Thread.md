@@ -1918,6 +1918,55 @@ private final static int b = 10; // 被 final 修饰的静态变量不会导致�
 
 出现顺序所决定的。并且静态代码块只能对后面的静态变量进行赋值，但是不能对其进行方法。
 
+```java
+public class Singleton
+{
+    private static int x = 0;
+    private static int y;
+    private static Singleton instance = new Singleton(); // 先执行上面两条语句，在执行构造函数，所以 x = 1,y = 1
+    
+    /*
+    private static Singleton instance = new Singleton();
+    private static int x = 0;
+    private static int y;
+    
+    若语句顺序如此，那么最终的结果 x = 0 , y = 1;
+    
+    连接阶段：赋初始值
+    instance = null,x = 0,y = 0
+    
+    初始化阶段：设置程序源代码中的初始值
+    首先执行构造函数， x = 1,y = 1
+    然后执行后面两条语句，所以执行完成后 x = 0,y = 1(编译器收集的顺序由执行语句在源文件中的出现顺序所决定)
+    
+    */
+
+    private Singleton()
+    {
+        x++;
+        y++;
+    }
+
+    public static Singleton getInstance()
+    {
+        return instance;
+    }
+
+    public static void main(String[] args) throws Exception
+    {
+        Singleton instance = Singleton.getInstance();
+        System.out.println(instance.x);
+        System.out.println(instance.y);
+        /*
+        x = 1
+        y = 1
+        */
+    }
+}
+```
+
+
+
 ​		`<clinit>()`方法与类的构造函数有所不同，它不需要显示的调用父类的构造器，虚拟机会保证父类的`<clinit>()`方法最先执行。由此父类的静态变量总是能
 
 够得到优先赋值。
@@ -1959,3 +2008,431 @@ public class ClassInit
 
 线程的执行环境下的同步语义。
 
+ 
+
+# JVM类加载器
+
+​		类加载器就是负责类的加载职责，对于任意一个`class`，都需要由加载它的类加载器和这个类本身确立其在`JVM`中的唯一性，也就是运行时包。
+
+​		`JVM`提供了三大内置的类加载器，不同的类加载负责将不同的类加载到`JVM`内存之中，并且它们之间严格遵守着父委托的机制。
+
+![](image/classloader.jfif)
+
+## 根类加载器
+
+​		根加载器又称为`Bootstrap`类加载器，该类加载器是最为顶层的加载器，其没有任何父加载器，由`C++`编写的，主要负责虚拟机核心类库的加载，比如：整
+
+个`java.lang`包都是由根加载器所加载的，可以通过`-Xbootclasspath`来指定根加载器的路径，也可以通过系统属性来得知当前`JVM`的根加载器加载了哪些资源。
+
+```java
+	public static void main(String[] args) throws Exception
+    {
+        System.out.println("bootstrap:" + String.class.getClassLoader()); // 根加载无法获得，为 null
+        System.out.println(System.getProperty("sun.boot.class.path")); // 根加载器所在的加载路径
+    }
+```
+
+
+
+## 扩展类加载器
+
+​		扩展类加载器的父加载器就是跟加载器，主要用于加载`JAVA_HOME`下的`jre\lb\ext`子目录里面的类库。扩展类加载器是由纯`Java`语言实现，它是
+
+`java.lang.URLClassLoader`的子类，完整类名是：`sun.misc.Launcher$ExtClassLoader`。
+
+```java
+	public static void main(String[] args) throws Exception
+    {
+        System.out.println(System.getProperty("java.ext.dirs")); // 获取扩展类加载器所加载的类库
+    }
+```
+
+
+
+## 系统类加载器
+
+​		系统类加载器是一种常见的类加载器，其负责加载`classpath`下的类库资源，系统类加载器的父加载器是扩展类加载器，同时它也是自定义加载器的默认父加
+
+载器，系统类加载器的加载路径一般通过`-classpath`或者`-cp`指定。
+
+```java
+	public static void main(String[] args) throws Exception
+    {
+        System.out.println(System.getProperty("java.class.path"));
+        System.out.println(ApplicationClassLoader.class.getClassLoader());
+    }
+```
+
+
+
+## 自定义类加载器
+
+​		自定义加载器都是`ClassLoader`的直接子类或者间接子类，`java.lang.ClassLoader`是一个抽象类，它里面并没有抽象方法，但是有`finClass`方法，务必实
+
+现该方法，否则将会抛出`ClassNotFoundException`异常。
+
+```java
+protected Class<?> findClass(String name) throws ClassNotFoundException 
+{
+        throw new ClassNotFoundException(name);
+}
+```
+
+```java
+public class StyleClassLoader extends ClassLoader
+{
+
+    private final static Path DEFAULT_CLASS_DIR = Paths.get("E:","javatest"); // 默认的class存放路径
+
+    private final Path classDir;
+
+    //使用默认的 class 路径
+    public StyleClassLoader()
+    {
+        super();
+        this.classDir = DEFAULT_CLASS_DIR;
+    }
+
+    // 允许传入指定路径的 class 路径
+    public StyleClassLoader(String classDir)
+    {
+        super();
+        this.classDir = Paths.get(classDir);
+    }
+
+	// 指定 class 路径的同时，指定父类加载器
+    public StyleClassLoader(String classDir,ClassLoader parent)
+    {
+        super(parent);
+        this.classDir = Paths.get(classDir);
+    }
+
+    // 重写 findClass 方法，至关重要的步骤
+    @Override
+    protected Class<?> findClass(String name) throws ClassNotFoundException
+    {
+        byte[] classBytes = this.readClassBytes(name); // 读取 class  的二进制数据
+        if( null == classBytes || classBytes.length == 0)
+        {
+            throw new ClassNotFoundException("the class " + name + " not found.");
+        }
+
+        return this.defineClass(name,classBytes,0,classBytes.length); // 调用 defineClass 方法定义 class,完整定义为protected final Class<?> defineClass(String name, byte[] b, int off, int len)；定义 off 与 len 的原因使获取到class二进制数据的方式有很多，一个字节数组中可能存储多个class的字节信息
+    }
+
+    private byte[] readClassBytes(String name) throws ClassNotFoundException
+    {
+        /*
+        类的全路径格式：
+        	1、包名.类名
+        	2、包名.类名$内部类
+        	3、包名.类名$内部类$内部类$匿名内部类
+        	4、包名.类名$匿名内部类$匿名内部类
+        */
+        String classPath = name.replace(".","/");
+        Path classFullPath = classDir.resolve(Paths.get(classPath + ".class"));
+
+        if(!classFullPath.toFile().exists())
+        {
+            throw new ClassNotFoundException("the class " + name + " not found.");
+        }
+
+        try
+        {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            Files.copy(classFullPath,baos);
+            return baos.toByteArray();
+        }
+        catch (Exception e)
+        {
+            throw new ClassNotFoundException("the class " + name + " not found.");
+        }
+
+    }
+
+
+    @Override
+    public String toString() {
+        return "StyleClassLoader";
+    }
+}
+```
+
+测试：
+
+```java
+public class Test
+{
+	private int m;
+	public int inc(int n)
+	{
+		return n + 1;
+	}
+
+	public static int m()
+	{
+		return 100;
+	}
+}
+// 将此类编译成 class 文件，放在自定义加载器的默认加载路径中
+
+
+	public static void main(String[] args) throws Exception
+    {
+        
+        // 如果使用集成开发环境，需要删除工程目录下同名的 java 文件和 class 文件
+        StyleClassLoader classLoader = new StyleClassLoader();
+
+        Class<?> test = classLoader.loadClass("Test");
+        System.out.println(test.getClassLoader());
+
+        Object o = test.newInstance();
+        System.out.println(o);
+
+        Method inc = test.getMethod("inc",int.class);
+        int invoke = (int)inc.invoke(o, 1);
+        System.out.println(invoke);
+    }
+```
+
+​		使用类加载器`loadClass`并不会导致类的主动初始化，其只是执行了加载过程中的加载阶段而已。因此静态代码块并不会执行。
+
+
+
+## 双亲委托机制
+
+​		当一个类加载被调用`loadClass`之后，它并不会直接将其加载，而是先交给当前类加载的父加载器尝试加载直到最顶层的父加载器，然后在依次向下进行加
+
+载。
+
+![](image/parent_handler.jfif)
+
+源码：
+
+```java
+
+	// loadClass(name) 调用的是 loadClass(name,false)
+
+	protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException
+    {
+        synchronized (getClassLoadingLock(name)) {
+            // First, check if the class has already been loaded
+            Class<?> c = findLoadedClass(name); // 从当前类加载器的已加载缓存中根据类的全路径名查询是否存在该类，如果存在则直接返回
+            if (c == null) {
+                long t0 = System.nanoTime();
+                try {
+                    if (parent != null) { // 存在父类加载器，则让父类加载器进行加载
+                        c = parent.loadClass(name, false);
+                    } else {
+                        c = findBootstrapClassOrNull(name); // 没有父类加载器，则使用根类加载器进行加载
+                    }
+                } catch (ClassNotFoundException e) {
+                    // ClassNotFoundException thrown if class not found
+                    // from the non-null parent class loader
+                }
+
+                if (c == null) {
+                    // If still not found, then invoke findClass in order
+                    // to find the class.
+                    long t1 = System.nanoTime();
+                    c = findClass(name); // 所有父类加载器都没有加载成功，则使用当前类加载器的 findClass 方法进行加载
+
+                    // this is the defining class loader; record the stats
+                    sun.misc.PerfCounter.getParentDelegationTime().addTime(t1 - t0);
+                    sun.misc.PerfCounter.getFindClassTime().addElapsedTimeFrom(t1);
+                    sun.misc.PerfCounter.getFindClasses().increment();
+                }
+            }
+            
+            // 为 false 不进行连接阶段的执行，所以类加载器加载类并不会导致类的初始化
+            if (resolve) {
+                resolveClass(c);
+            }
+            return c;
+        }
+    }
+```
+
+
+
+​		在上面对自定义类加载的测试中，如何才能在不删除工程中的同名文件时利用集成开发环境使用自定义类加载器而不是系统类加载器对类进行加载：
+
+​				1、绕过系统类加载器，直接将扩展类加载器作为自定义加载器的父加载器。
+
+​				2、在构造自定义加载器时指定父类加载器为`null`。
+
+
+
+### 破坏双亲委托机制
+
+```java
+	// 在上面自定义类加载的基础上，重写 loadClass 方法
+	@Override
+    protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException
+    {
+        synchronized (getClassLoadingLock(name)) // 根据类的全路径名称加锁，确保每一个类在多线程的环境下只被加载一次
+        {
+            Class<?> loadedClass = findLoadedClass(name); // 到已加载类的缓存中查看该类是否已经被加载，如果已被加载则直接返回
+            if(loadedClass == null)
+            {
+                if(name.startsWith("java.") || name.startsWith("javax.")) // 没有则进行首次加载，全路径以 java 或 javax开头，交给系统类加载器
+                {													 // 进行加载
+                    try
+                    {
+                        loadedClass = getSystemClassLoader().loadClass(name);
+                    }
+                    catch (Exception e)
+                    {
+
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        loadedClass = this.findClass(name); // 不是以java 和 javax 开头，尝试以自定义的类加载进行加载
+                    }
+                    catch (Exception e)
+                    {
+
+                    }
+
+                    if(loadedClass == null) // 自定义类加载没有完成对类的加载，则交给父类加载器或者系统类加载器进行加载
+                    {
+                        if(getParent() != null) 
+                        {
+                            loadedClass = getParent().loadClass(name);
+                        }
+                        else
+                        {
+                            loadedClass = getSystemClassLoader().loadClass(name);
+                        }
+                    }
+                }
+            }
+
+            if(null == loadedClass) // 还是没有找到则抛出异常
+            {
+                throw new ClassNotFoundException("the class " + name + " not found.");
+            }
+            if(resolve)
+            {
+                resolveClass(loadedClass);
+            }
+            return loadedClass;
+        }
+    }
+```
+
+
+
+## 类加载器命名空间
+
+​		每一个类加载器都有各自的命名空间，命名空间是由该加载器及其所有父加载器所构成的，因此在每个类加载器中同一个`class`都是独一无二的。
+
+```java
+	public static void main(String[] args) throws Exception
+    {
+        ClassLoader classLoader = NameSpace.class.getClassLoader();
+        Class<?> aClass = classLoader.loadClass("java.sql.Connection");
+        Class<?> bClass = classLoader.loadClass("java.sql.Connection");
+
+        System.out.println(aClass.hashCode()); 
+        System.out.println(bClass.hashCode());
+        System.out.println(aClass == bClass); // true
+    }
+```
+
+![](image/QQ截图20210620152814.png)
+
+​		使用不同的类加载器，或者同一个加载器的不同实例，去加载同一个`class`，则会在对内存和方法区产生多个`class`对象。
+
+```java
+	// 不同类加载同一个 class 得到不同的 class 实例
+	public static void main(String[] args) throws Exception
+    {
+        StyleClassLoader classLoader1 = new StyleClassLoader("E:\\javatest",null);
+        BrokerDelegateClassLoader classLoader2 = new BrokerDelegateClassLoader("E:\\javatest",null);
+        Class<?> aClass = classLoader1.loadClass("com.shanji.over.ten.Test"); // 该类需要在上面给的地址中存在
+        Class<?> bClass = classLoader2.loadClass("com.shanji.over.ten.Test");
+
+        System.out.println(aClass.getClassLoader());
+        System.out.println(bClass.getClassLoader());
+
+        System.out.println(aClass.hashCode());
+        System.out.println(bClass.hashCode());
+        System.out.println(aClass == bClass); // false
+    }
+
+
+	// 相同类加载器的不同实例加载同一个 class 得到不同的 class 实例
+	public static void main(String[] args) throws Exception
+    {
+        BrokerDelegateClassLoader classLoader1 = new BrokerDelegateClassLoader("E:\\javatest",null);
+        BrokerDelegateClassLoader classLoader2 = new BrokerDelegateClassLoader("E:\\javatest",null);
+        Class<?> aClass = classLoader1.loadClass("com.shanji.over.ten.Test");
+        Class<?> bClass = classLoader2.loadClass("com.shanji.over.ten.Test");
+
+        System.out.println(aClass.getClassLoader());
+        System.out.println(bClass.getClassLoader());
+
+        System.out.println(aClass.hashCode());
+        System.out.println(bClass.hashCode());
+        System.out.println(aClass == bClass);
+    }
+```
+
+
+
+原因：
+
+```java
+// 在 loadClass 中会调用 findLoadedClass 方法
+protected final Class<?> findLoadedClass(String name) {
+        if (!checkName(name))
+            return null;
+        return findLoadedClass0(name);
+}
+
+private native final Class<?> findLoadedClass0(String name);
+```
+
+​		在类加载器进行类加载的时候，首先会到加载记录表中查看该类是否已被加载过了，如果已经被加载过了，则不会重复加载，否则会被认为是首次加载。
+
+![](image/QQ截图20210620155310.png)
+
+​		**同一个`class`实例在同一个类加载器命名空间之下是唯一的**。
+
+
+
+## 运行时包
+
+​		运行时包是由类加载器的命名空间和类的全限定名共同构成。好处是安全和封装的考虑。不同的运行时包下的类彼此是不可以进行访问的。
+
+
+
+## 初始类加载器
+
+​		既然不同的运行时包下的类彼此不能进行访问，为什么程序`(`通常由系统类加载器进行加载`)`中又可以使用`String`这种根加载器所加载的类呢：每一个类经
+
+过类加载器的加载之后，在虚拟机中都会有相应的`Class`实例，如果某个类被类加载器`CL`加载，那么`CL`就被称为该类的初始类加载器。`JVM`为每一个类加载器
+
+维护了一个列表，该列表中记录了将该类加载器作为初始类加载器的所有`class`，在加载一个类时，`JVM`使用这些列表来判断该类是否已经被加载过了，是否需要
+
+首次加载。
+
+​		在类的加载过程中，所有参与的类加载器，即使没有亲自加载过该类，也都会被标识为该类的初始类加载器。
+
+![](image/QQ截图20210620161614.png)
+
+
+
+## 类的卸载
+
+​		一个`Class`只有满足三个条件才会被`GC`回收，即类的卸载：
+
+​				1、该类所有的实例都已经被`GC`。
+
+​				2、加载该类的类加载器实例被回收。
+
+​				3、该类的`class`实例没有在其他地方被引用。
