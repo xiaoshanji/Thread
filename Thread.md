@@ -2436,3 +2436,32 @@ private native final Class<?> findLoadedClass0(String name);
 ​				2、加载该类的类加载器实例被回收。
 
 ​				3、该类的`class`实例没有在其他地方被引用。
+
+
+
+# 线程上下文类加载器
+
+```java
+public ClassLoader getContextClassLoader();  // 获取当前线程的上下文类加载器
+public void setContextClassLoader(ClassLoader cl); // 设置当前线程的上下文加载器
+```
+
+​		如果当前线程没有设置上下文类加载器，那么它将和父线程保持同样的类加载器。
+
+```java
+	public static void main(String[] args) throws Exception
+    {
+        ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
+        System.out.println(contextClassLoader);
+    }
+```
+
+​		为什么需要线程上下文类加载器：与双亲委托机制自身的缺陷是分不开的。`JDK`的核心库中有很多`SPI`（服务提供接口），比如`JDBC`，`JDK`中只规定了这些
+
+接口的逻辑关系，具体实现由第三方厂商提供。加载过程中，`SPI`由根加载器加载，具体实现是由系统类加载器加载。`SPI`与具体实现位于不同的运行时包，因
+
+此`SPI`是无法直接使用具体实现的。线程上下文类加载解决了这个问题，其让根加载器委托子类加载器去去加载某些类，由此根类加载的记录列表中也会有具体的
+
+实现类，让`SPI`与其具体实现位于同一个运行时包中，就可以直接使用。此种方式也打破了双亲委托机制的模型。
+
+​		
