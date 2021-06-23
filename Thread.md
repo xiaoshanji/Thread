@@ -2464,4 +2464,370 @@ public void setContextClassLoader(ClassLoader cl); // 设置当前线程的上�
 
 实现类，让`SPI`与其具体实现位于同一个运行时包中，就可以直接使用。此种方式也打破了双亲委托机制的模型。
 
-​		
+​	
+
+# volatile关键字
+
+​		`CPU`所能访问的所有数据只能是计算机的主存，但`CPU`的处理速度与内存的访问速度差距很大，如果`CPU`通过传统的`FSB`直连内存的访问方式会导致`CPU`整
+
+体吞吐量的下降。缓存的加入是为了解决`CPU`直接访问内存效率低下的问题，缓存的数量通常为3级。
+
+![](image/cache.jpg)
+
+​		由于程序指令和程序数据的行为和热点分布差异很大，由此`L1 Cache`又被划分成了`L 1i(i:instruction)`和`L 1d(d:data)`这两种有各自专门用途的缓存。
+
+​		`CPU Cache`又是由很多个`Cache Line`构成的，`Cache Line`可以认为是`CPU Cache`中的最小缓存单位，目前主流`CPU Cache`的`Cache Line`大小都是64字节。
+
+​		程序运行过程中，会将运算所需要的数据从主存复制一份到`CPU Cache`中，这样`CPU`进行运算时就可以直接对`CPU Cache`中的数据进行读取和写入，当运算结
+
+束之后，在将`CPU Cache`中的最新数据刷新到主内存当中，`CPU`通过直接访问`Cache`的方式替代直接访问主存的方式极大地提高了`CPU`的吞吐能力。
+
+![](image/CPU_RAM.jfif)
+
+​		由于每个线程都有自己的工作内存（对应于`CPU`中的`Cache`），共享变量会在多个线程的工作内存中都存在一个副本，因此也引入了缓存不一致问题。比
+
+如：两个线程执行`i++`操作，如果`i`初值为`0`，很有可能经过了两次自增之后结果还是`1`。
+
+​		为了解决缓存不一致问题：
+
+​				1、通过总线加锁：常见于早起的`CPU`，是一种悲观的实现方式，`CPU`和其他组件的通信都是通过总线来进行的，会阻塞其他`CPU`对于其他组件的访问，
+
+​		从而使得只有一个`CPU`能够访问到这个变量的内存，效率低下。
+
+​				2、通过缓存一致性协议：当`CPU`在操作`Cache`中的数据时，如果发现该变量时一个共享变量，则在读取时，不做任何处理，只是将`Cache`中的数据读取
+
+​		到寄存器中。在写入时，发出信号通知其他`CPU`将该变量的`Cache Line`置为无效状态，其他`CPU`在进行读取该变量的时候不得不到主内存中再次获取。
+
+
+
+## Java内存模型
+
+​		`Java`的内存模型`(JMM:Java Memory Mode)`指定了`Java`虚拟机如何与计算机的主存进行工作，决定了一个线程对共享变量的写入合适对其他线程可见，定义
+
+了线程与主存之间的抽闲关系。
+
+​				1、共享变量存储在主存中，每个线程都可以访问。
+
+​				2、每个线程都有私有的工作内存或者称为本地内存。
+
+​				3、工作内存只存储该线程对共享变量的副本。
+
+​				4、线程不能直接操作主存，只有先操作了工作内存之后才能写入主存。
+
+
+
+![](image/JMM.jfif)
+
+
+
+![](image/JMM_CPU.jfif)
+
+## 三个特性
+
+### 原子性
+
+​		原子性：在一次的操作或者多次操作中，要么所有的操作全部都得到了执行并且不会受到任何因素的干扰而中断，要么所有的操作都不执行。
+
+​		多个原子性的操作结合在一起未必还是原子性。
+
+
+
+### 可见性
+
+​		可见性：在一个线程对共享变量进行了修改，那么另外的贤臣可以立即看到修改后的最新值。
+
+
+
+### 有序性
+
+​		有序性：程序代码在执行过程中的先后顺序，由于`Java`在编译器以及运行期的优化，导致了代码的执行顺序未必就是开发者编写代码时的顺序。
+
+​		一般而言，处理器为了提高程序的运行效率，可能会对输入的代码指令做一定的优化，它不会百分之百的保证代码的执行顺序严格按照编写代码的顺序来进
+
+行，但是它会保证程序的最终运算结果是编码时所期望的那样。
+
+
+
+​		`Java`采用内存模型的机制来屏蔽各个平台和操作系统之间内存访问的差异，以实现让`Java`程序在各种平台下达到一致的内存访问效果。
+
+​		`Java`内存模型规定了所有的变量都是存在于主存中，每个线程都有自己的工作内存，线程对变量的所有操作都必须在自己的工作内存中进行，而不能直接对
+
+主存进行操作，并且每个线程都不能访问其他线程的工作内存。
+
+
+
+## JMM与原子性
+
+​		`volatile`关键字不具备保证原子性的语义。
+
+​				1、多个原子性的操作在一起就不是原子性操作了。
+
+​				2、简单的读取与赋值操作时原子性的，将一个变量赋值给另一个变量的操作不是原子性的。
+
+​				3、`Java`内存模型只保证了基本读取和赋值的原子性操作，其他的均不能保证（比如自增或者变量之间的赋值），如果想要使得某些代码片段具有原子
+
+​		性需要使用关键字`synchronized`，或者`JUC`中的`lock`，如果想要使得`int`等类型自增操作具有原子性，可以使用`JUC`包下的原子性封装类型
+
+​		`java.util.concurrent.atomic.*`。
+
+
+
+## JMM与可见性
+
+​		某个线程首次读取共享变量，则首先会到主存中获取该变量，然后存入工作内存中，以后只需要在内存中获取该变量即可，对该变量执行了修改的操作，则先
+
+将新值写入工作内存中，然后在刷新至主存中，但最新值刷入到主存中的时机是不确定的。
+
+​		三种方式保证可见性：
+
+​				1、使用关键字`volatile`：当一个变量被`volatile`修饰时，对于共享资源的读操作会直接在主内存中进行（工作内存中共享资源失效），对于写操作依
+
+​		然是先修改工作内存，修改结束后会立刻将其刷新到主内存中。
+
+​				2、使用关键字`synchronized`：`synchronized`关键字能够保证同一时刻只有一个线程获得锁，然后执行同步方法，并且还会确保在锁释放之前，会将对
+
+​		变量的修改刷新到主存中。
+
+​				3、通过`JUC`提供的显式锁`Lock`：`Lock`的`lock`方法能够保证在同一时刻只有一个线程获得锁然后执行同步方法，并且会确保在锁释放`(unlock`方法`)`
+
+​		之前将对变量的修改刷新到主存中。
+
+
+
+## JMM与有序性
+
+​		在`Java`的内存模型中，允许编译器和处理器对指令进行重排序，`Java`提供了三种保证有效性的方式：
+
+​				1、使用`volatile`关键字。
+
+​				2、使用`synchronized`关键字。
+
+​				3、使用显示锁`Lock`。
+
+​		后面两者采用了同步机制，
+
+
+
+### happens-before原则
+
+​		程序次序规则：一个线程内，代码按照编写时的次序执行，编写在后面的操作发生与编写在前面的操作之后。看起来程序按照编写的顺序来执行，但是虚拟机
+
+还是可能会对程序代码的指令进行重排序，只要确保在一个线程内最终的结果和代码顺序执行的结果一致即可。
+
+​		锁定规则：一个`unlock`操作要先行发生于对同一个所的`lock`操作。如果同一个锁是锁定状态，则必须先对其执行释放操作之后才能继续进行`lock`操作。
+
+​		`volatile`变量规则：对一个变量的写操作要早于对这个变量之后的读操作。即写入操作肯定要先于读操作。
+
+​		传递规则：如果操作`A`先于操作`B`，而操作`B`先于操作`C`，那么操作`A`肯定先于操作`C`，此规则说明`happens-before`原则具有传递性。
+
+​		线程启动规则：`Thread`对象的`start`方法先行发生与对该线程的任何动作。
+
+​		线程中断规则：对线程执行`interrupt`方法肯定要优先于捕获到中断信号，即如果线程收到了中断信号，那么在此之前势必要有`interrupt()`。
+
+​		线程终结规则：所有的操作都要先行发生于线程的终止检测，即线程的任务执行，逻辑单元执行肯定要发生于线程死亡之前。
+
+​		对象的终结规则：对象的初始化的完成先行发生于`finalize()`方法之前。
+
+
+
+​		两个操作的执行次序无法从`happens-before`原则推导出来，那么它们就无法保证有序性，即虚拟机或者处理器可以随意对他们进行重排序处理。
+
+
+
+## volatile解析
+
+​		被`volatile`修饰的变量具有两层语义：
+
+​				1、保证了不同线程之间对共享变量操作时的可见性，即当一个线程修改`volatile`修饰的变量，其余线程会立即看到最新的值。（可见性）
+
+​				2、禁止对指令进行重排序操作。（有序性）直接禁止`JVM`和处理器对`volatile`关键字修饰的指令重排序，但是对于`volatile`前后无依赖关系的指令则
+
+​		可以随便排序。
+
+​				3、不能操作原子性：
+
+```java
+public class VolatileTest
+{
+    private static volatile int i = 0;
+    private static void inc()
+    {
+        i++; // 该操作包含三步，读取i的值加入工作内存，将i加1，将i的最新值写回主存
+    }
+    public static void main(String[] args) throws Exception
+    {
+        for(int i = 0 ; i < 10 ; i++)
+        {
+            new Thread(() ->
+            {
+                for(int x = 0 ; x < 1000 ; x++)
+                {
+                    inc();
+                }
+            }).start();
+        }
+        Thread.currentThread().join();
+        System.out.println(i); // 结果并不是 10000
+    }
+}
+```
+
+
+
+## volatile原理与实现机制
+
+​		在`JDK`源码的`unsafe.cpp`文件中，会发现被`volatile`修饰的变量存在于一个`lock;`前缀，其相当于一个内存屏障，该内存屏障会为指令的执行提供保障：
+
+​				1、确保指令重排序时不会将其后的代码排到内存屏障之前。
+
+​				2、确保指令重排序时不会将其前的代码排到内存屏障之后。
+
+​				3、确保在执行到内存屏障修饰的指令时前面的代码全部执行完成。
+
+​				4、强制将线程工作内存中值的修改刷新至主存中。
+
+​				5、如果是写操作，则会导致其他线程工作内存中的缓存数据失效。
+
+
+
+## 使用场景
+
+开关控制利用可见性
+
+```java
+public class ThreadCloseable extends Thread
+{
+    private volatile boolean started = true;
+    
+    public void run()
+    {
+        while(started)
+        {
+            
+        }
+    }
+    
+    public void shutdown()
+    {
+        this.started = false;
+    }
+}
+```
+
+
+
+状态标记利用顺序性
+
+```java
+public class StatusMark
+{
+    private volatile boolean initialized = false;
+    private Context context;
+    public Context load()
+    {
+        if(!initialized)
+        {
+            context = loadContext();
+            initialized = true;
+        }
+        return context;
+    }
+}
+```
+
+
+
+单例模式的`double-check`利用顺序性
+
+
+
+## volatile和synchronized
+
+使用：
+
+​		1、`volatile`关键字只能用于修饰实例变量或者类变量，不能用于修饰方法以及方法参数和局部变量，常量等。
+
+​		2、`synchronized`关键字不能用于对变量的修饰，只能用于修饰方法或者语句块。
+
+​		3、`volatile`修饰的变量可以为`null`，`synchronized`关键字同步语句块的`monitor`对象不能为`null`。
+
+
+
+对原子性的保证
+
+​		1、`volatile`无法保证原子性。
+
+​		2、由于`synchronized`是一种排他的机制，因此被`synchronized`关键字修饰的同步代码是无法被中途打断的，因此其能够保证代码的原子性。
+
+
+
+对可见性的保证
+
+​		1、两者都可以保证共享资源在多线程的可见性，但是实现机制完全不同。
+
+​		2、`synchronized`借助于`JVM`指令`monitor enter`和`monitor exit`对通过排他的方式是的同步代码串行化，在`monitor exit`时所有共享资源都将会刷新到主
+
+存中。
+
+​		3、相比较于`synchronized`关键字`volatile`使用机器指令`"lock ;"`的方式迫使其他线程工作内存中的数据失败，不得不到主存中再次加载。
+
+
+
+对有序性的保证
+
+​		1、`volatile`关键字禁止`JVM`编译器以及处理器对其进行重排序，所以能够保证有序性。
+
+​		2、虽然`synchronized`关键字所修饰的同步方法也可以保证顺序性，但是这种顺序性是以程序的串行化执行换来的，在`synchronized`关键字所修饰的代码块
+
+中代码指令也会发生重排序的情况。
+
+其他
+
+​		1、`volatile`不会是线程陷入阻塞。
+
+​		2、`synchronized`会使线程进入阻塞。
+
+
+
+```java
+public class VolatileFoo
+{
+    final static int MAX = 5;
+    static int  init_value = 0; // 若不使用volatile修饰，则reader线程不会输出信息
+    public static void main(String[] args) throws Exception
+    {
+        new Thread(() ->
+        {
+            int localValue = init_value;
+            while (localValue < MAX)
+            {
+                if(init_value != localValue)
+                {
+                    System.out.printf("the init_value is updated to [%d]\n",init_value);
+                    localValue = init_value;
+                }
+            }
+        },"reader").start();
+
+        new Thread(() ->
+        {
+            int localValue = init_value;
+            while (localValue < MAX)
+            {
+                System.out.printf("the init_value will be changed to [%d]\n",++localValue);
+                init_value = localValue;
+
+                try
+                {
+                    TimeUnit.SECONDS.sleep(2);
+                }
+                catch (Exception e)
+                {
+                    e.printStackTrace();
+                }
+            }
+        },"updater").start();
+    }
+}
+```
+
