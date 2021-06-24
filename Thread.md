@@ -2831,3 +2831,282 @@ public class VolatileFoo
 }
 ```
 
+
+
+# 单例模式
+
+​		单例设计模式提供了一种在多线程情况下保证实例唯一性的解决方案。
+
+## 饿汉式
+
+```java
+public final class Singleton
+{
+    private byte[] data = new byte[1024];
+
+    private static Singleton instance = new Singleton();
+
+    private Singleton()
+    {
+
+    }
+    private static Singleton getInstance()
+    {
+        return instance;
+    }
+}
+```
+
+​		饿汉式的关键在于`instance`作为类变量并且直接得到了初始化。在被初始化的过程中会被收集进`<clinit>()`方法中，该方法能够百分百保证同步，即
+
+`instance`在多线程情况下，不会被实例化两次，但如果`instance`很长一段时间后才使用，可能会造成资源的浪费。
+
+​		饿汉式性能较高，多线程能保证唯一性，但无法进行懒加载。
+
+
+
+## 懒汉式
+
+​		懒汉式就是使用类实例的时候再去创建。
+
+```java
+public final class Singleton
+{
+    private byte[] data = new byte[1024];
+
+    private static Singleton instance = null;
+
+    private Singleton()
+    {
+
+    }
+    private static Singleton getInstance()
+    {
+        if(null == instance)
+        {
+            instance = new Singleton();
+        }
+        return instance;
+    }
+}
+```
+
+​		多线程情况下，`instance`可能会被实例化多次，不能保证唯一性。
+
+![](image/QQ截图20210624083049.png)
+
+
+
+## 懒汉式+同步方法
+
+```java
+public final class Singleton
+{
+    private byte[] data = new byte[1024];
+
+    private static Singleton instance = null;
+
+    private Singleton()
+    {
+
+    }
+    private static synchronized Singleton getInstance()
+    {
+        if(null == instance)
+        {
+            instance = new Singleton();
+        }
+        return instance;
+    }
+}
+```
+
+​		该方式既满足懒加载又能保证唯一性。但是`synchronized`关键字天生的排他性导致同一时刻只能有一个线程访问，性能低下。
+
+
+
+## Double-Check
+
+​		该方式提供了一种高校的数据同步策略，在首次初始化时加锁，之后允许多个线程同时进行访问来获取类的实例。
+
+```java
+public final class Singleton
+{
+    private byte[] data = new byte[1024];
+
+    private static Singleton instance = null;
+
+    private Connection conn;
+
+    private Socket socket;
+
+    private Singleton()
+    {
+        this.conn = ;
+        this.socket = ;
+    }
+    private static synchronized Singleton getInstance()
+    {
+        if(null == instance)
+        {
+            synchronized (Singleton.class)
+            {
+                if( null == instance)
+                {
+                    instance = new Singleton();
+                }
+            }
+        }
+        return instance;
+    }
+}
+```
+
+​		该方式既满足懒加载，有保证了唯一性，并且允许多个线程同时访问。但可能会引起空指针异常。
+
+​		在构造函数中，分别实例化了两个资源，但由于可能出现重排序，很有可能`instance`最先被实例化，而`conn`和`socket`并未被初始化。
+
+![](image/QQ截图20210624085714.png)
+
+## Volatile+Double+Check
+
+​		`double-check`可能会引起类成员变量的实例化发生在类实例变量实例化之后，这是由于`JVM`在运行时指令重排序所导致的，而`volatile`可以防止重排序的发
+
+生。
+
+```java
+public final class Singleton
+{
+    private byte[] data = new byte[1024];
+
+    private volatile static Singleton instance = null; // 在 double-check的基础上，使用volatile修饰类实例变量
+
+    private Connection conn;
+
+    private Socket socket;
+
+    private Singleton()
+    {
+        this.conn = ;
+        this.socket = ;
+    }
+    private static synchronized Singleton getInstance()
+    {
+        if(null == instance)
+        {
+            synchronized (Singleton.class)
+            {
+                if( null == instance)
+                {
+                    instance = new Singleton();
+                }
+            }
+        }
+        return instance;
+    }
+}
+```
+
+
+
+## Holder方式
+
+​		此方式借助了类加载的特点。
+
+```java
+public final class Singleton
+{
+    private byte[] data = new byte[1024];
+
+    private Singleton()
+    {
+
+    }
+    private static class Holder
+    {
+        private static Singleton instance = new Singleton();
+    }
+
+    public static Singleton getInstance()
+    {
+        return Holder.instance;
+    }
+}
+```
+
+​		`Singleton`类中并没有`instance`的静态成员，而是将其放到了静态内部类`Holder`之中，因此在`Singleton`类的初始化过程中并不会创建`Singleton`的实例，
+
+当`Holder`被主动使用的时候会创建`Singleton`的实例。此方式是单例模式最好的设计之一。
+
+
+
+## 枚举方式
+
+​		枚举类型不允许被继承，同样是线程安全的且只能被实例化一次，但是枚举类型不能够懒加载。
+
+```java
+public enum  Singleton
+{
+    INSTANCE;
+
+    private byte[] data = new byte[1024];
+
+    Singleton()
+    {
+        System.out.println("INSTANCE will be initialized immediately");
+    }
+
+    public static void method()
+    {
+        // 调用该方法则会主动使用Singleton，INSTANCE会被实例化
+    }
+
+    public static Singleton getInstance()
+    {
+        return INSTANCE;
+    }
+}
+```
+
+​		但也可以改造为懒加载：
+
+```java
+public class  Singleton
+{
+    private byte[] data = new byte[1024];
+
+    private Singleton()
+    {
+        System.out.println("INSTANCE will be initialized immediately");
+    }
+
+    private enum EnumHolder
+    {
+        INSTANCE;
+
+        private Singleton instance;
+
+        EnumHolder()
+        {
+            this.instance = new Singleton();
+        }
+
+        private Singleton getSingleton()
+        {
+            return instance;
+        }
+    }
+
+    public static Singleton getInstance()
+    {
+        return EnumHolder.INSTANCE.getSingleton();
+    }
+}
+```
+
+
+
+
+
+
+
