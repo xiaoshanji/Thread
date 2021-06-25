@@ -3106,6 +3106,211 @@ public class  Singleton
 
 
 
+# 监控任务的声明周期
+
+​		使用观察者模式来实现监控：
+
+```java
+public interface Observable
+{
+    enum Cycle
+    {
+        STARTED,RUNNING,DONE,ERROR // 代表任务执行生命周期的各个阶段
+    }
+    Cycle getCycle(); // 获取当前任务处于哪个阶段
+    void start(); // 为了屏蔽Thread类的其他的API，对线程进行启动
+    void interrupt();
+}
+```
+
+```java
+public interface TaskLiftcycle<T>
+{
+    void onStart(Thread thread); // 线程启动时触发此方法
+
+    void onRunning(Thread thread); // 任务正在运行时触发此方法
+
+    void onFinish(Thread thread,T result); // 任务运行结束时触发此方法
+
+    void onError(Thread thread,Exception e); // 任务出错时触发此方法
+
+    class EmptyLifecycle<T> implements TaskLiftcycle<T> // 空实现
+    {
+
+        @Override
+        public void onStart(Thread thread) {
+
+        }
+
+        @Override
+        public void onRunning(Thread thread) {
+
+        }
+
+        @Override
+        public void onFinish(Thread thread, T result) {
+
+        }
+
+        @Override
+        public void onError(Thread thread, Exception e) {
+
+        }
+    }
+}
+```
+
+```java
+public interface Task<T>
+{
+    T call(); // 任务执行接口
+}
+```
+
+```java
+public class ObservableThread<T> extends Thread implements Observable
+{
+    private final TaskLiftcycle<T> liftcycle;
+
+    private final Task<T> task;
+
+    private Cycle cycle;
+
+    public ObservableThread(Task<T> task)
+    {
+        this(new TaskLiftcycle.EmptyLifecycle<>(),task);
+    }
+
+    public ObservableThread(TaskLiftcycle<T> liftcycle,Task<T> task)
+    {
+        super();
+        if(task == null)
+        {
+            throw new IllegalArgumentException("the task is required");
+        }
+
+        this.liftcycle = liftcycle;
+        this.task = task;
+    }
+
+    public final void run()
+    {
+        this.update(Cycle.STARTED,null,null);
+
+        try
+        {
+            this.update(Cycle.RUNNING,null,null);
+
+            T result = this.task.call();
+            this.update(Cycle.DONE,result,null);
+        }
+        catch (Exception e)
+        {
+            this.update(Cycle.ERROR,null,e);
+        }
+    }
+
+
+    private void update(Cycle cycle,T result,Exception e)
+    {
+        this.cycle = cycle;
+
+        if(liftcycle == null)
+        {
+            return ;
+        }
+        try
+        {
+            switch (cycle)
+            {
+                case STARTED:
+                    this.liftcycle.onStart(currentThread());
+                    break;
+                case RUNNING:
+                    this.liftcycle.onRunning(currentThread());
+                    break;
+                case DONE:
+                    this.liftcycle.onFinish(currentThread(),result);
+                    break;
+                case ERROR:
+                    this.liftcycle.onError(currentThread(),e);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            if(cycle == Cycle.ERROR)
+            {
+                throw ex;
+            }
+        }
+    }
+
+    public Cycle getCycle()
+    {
+        return this.cycle;
+    }
+
+}
+```
+
+![](image/QQ截图20210625083903.png)
+
+
+
+测试
+
+```java
+public class ObservableThreadTest
+{
+    public static void main(String[] args) throws Exception
+    {
+        Observable observableThread = new ObservableThread<>(() ->
+        {
+            try
+            {
+                TimeUnit.SECONDS.sleep(10);
+            }
+            catch (Exception e)
+            {
+                e.printStackTrace();
+            }
+            System.out.println(" finished done.");
+            return null;
+        });
+
+        observableThread.start();
+
+        final TaskLiftcycle<String> liftcycle = new TaskLiftcycle.EmptyLifecycle<String>()
+        {
+            public void onFinish(Thread thread,String result)
+            {
+                System.out.println("the result is " + result);
+            }
+        };
+
+        Observable observableThread2 = new ObservableThread<>(liftcycle,()->
+        {
+            try
+            {
+                TimeUnit.SECONDS.sleep(10);
+            }
+            catch (Exception e)
+            {
+                e.printStackTrace();
+            }
+            System.out.println(" finished done.");
+            return "xiaoshanshan";
+        });
+        observableThread2.start();
+    }
+}
+```
+
+
+
+
+
 
 
 
